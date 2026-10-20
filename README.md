@@ -48,6 +48,36 @@ Qualquer chave do YAML pode ser sobrescrita com `--set secao.chave=valor`.
 - **Seleção do checkpoint:** usamos 10% do `TrainDataset`, separados para validação. Muitos artigos escolhem o checkpoint diretamente nos conjuntos de teste, o que infla os números. Aqui isso não acontece.
 - `eval.py` também reporta parâmetros, GFLOPs (multiplicações-somas, como nos artigos) e FPS.
 
+## Resultados
+
+### EMCAD-B0 (3,92M parâmetros, 1,8 GFLOPs) — Kaggle T4, 1 seed
+
+- **Configuração:** `configs/emcad_b0.yaml`, 100 épocas, batch 16, fp16.
+- **Tempo:** cerca de 45 minutos de treino.
+- **Checkpoint:** escolhido pela validação separada do treino; o melhor foi o da época 77.
+- **Velocidade:** cerca de 58 FPS na T4 com batch 1.
+- **Artefatos:** [`results/emcad_b0_kaggle_t4/`](results/emcad_b0_kaggle_t4/).
+
+| Dataset | mDice | mDice (+TTA flip) | mIoU (+TTA) | Sα (+TTA) | MAE (+TTA) |
+|---|---|---|---|---|---|
+| Kvasir | 0.914 | **0.918** | 0.865 | 0.926 | 0.029 |
+| CVC-ClinicDB | **0.932** | 0.925 | 0.876 | 0.943 | 0.010 |
+| CVC-ColonDB *(não visto)* | 0.755 | **0.765** | 0.683 | 0.845 | 0.041 |
+| ETIS *(não visto)* | 0.758 | **0.781** | 0.701 | 0.865 | 0.020 |
+| CVC-300 *(não visto)* | 0.883 | **0.892** | 0.816 | 0.933 | 0.009 |
+
+Para referência, os números publicados no mesmo protocolo (mDice) são estes:
+
+| Modelo | Params | Kvasir | ClinicDB | ColonDB | ETIS | CVC-300 |
+|---|---|---|---|---|---|---|
+| PraNet (MICCAI 2020) | 32,6M | 0.898 | 0.899 | 0.709 | 0.628 | 0.871 |
+| Polyp-PVT (2023) | 25,1M | 0.917 | 0.937 | 0.808 | 0.787 | 0.900 |
+| **EMCAD-B0 (nosso, com TTA)** | **3,9M** | **0.918** | **0.925** | **0.765** | **0.781** | **0.892** |
+
+Com cerca de 6× menos parâmetros, o B0 empata com o Polyp-PVT nos datasets vistos no treino, no ETIS e no CVC-300. A maior diferença está no **ColonDB, cerca de 4 pontos**.
+
+Ressalvas: é uma única seed, e muitos artigos escolhem o checkpoint diretamente no conjunto de teste, o que não fazemos aqui.
+
 ## Estado da arte (outubro de 2026), em resumo
 
 - **Datasets vistos no treino estão saturados.** O Dice fica entre 0,92 e 0,94 no Kvasir e no ClinicDB. Exemplos: Polyp-PVT, CASCADE, EMCAD, MEGANet, SCABNet.
@@ -75,7 +105,7 @@ Para se diferenciar do Polyp-DiFoM e do LiteBounD, os candidatos são:
 | Fase | Conteúdo | Hardware | Status |
 |---|---|---|---|
 | 0 | Infraestrutura, dados, métricas e testes | CPU | ✅ |
-| 1 | Baselines reprodutíveis (EMCAD-B0/B2, depois U-Net e PraNet), com 3 seeds | 4–8 GB / Kaggle | 🟡 EMCAD pronto para treinar |
+| 1 | Baselines reprodutíveis (EMCAD-B0/B2, depois U-Net e PraNet), com 3 seeds | 4–8 GB / Kaggle | 🟡 EMCAD-B0 treinado (1 seed); faltam B2 e seeds |
 | 2 | Professor offline: SAM2 e DINOv2, com cache de features | DGX Spark | ⏳ |
 | 3 | Aluno destilado + contribuição (a/b/c/d), ablações e PolypGen | 4–8 GB | ⏳ |
 | 4 | Ferramenta: ONNX/TensorRT, demo em vídeo e consistência temporal | — | ⏳ |

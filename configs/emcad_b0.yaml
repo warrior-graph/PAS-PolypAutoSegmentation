@@ -1,4 +1,4 @@
-# PVTv2-b0 + EMCAD (~3.9M params, ~1.6 GFLOPs at 352x352). Fits a 4 GB GPU.
+# PVTv2-b0 + EMCAD (~3.9M params, ~1.8 GFLOPs at 352x352). Fits a 4 GB GPU.
 experiment: emcad_b0
 seed: 42
 device: auto
