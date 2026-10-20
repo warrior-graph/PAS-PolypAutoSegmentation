@@ -18,8 +18,9 @@ def main():
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--share", action="store_true")
+    ap.add_argument("--scales", type=float, nargs="+", default=[1.0], help="multi-scale TTA, e.g. 1.0 1.25 1.5")
     args = ap.parse_args()
-    predictor = Predictor(args.checkpoint, args.device)
+    predictor = Predictor(args.checkpoint, args.device, scales=args.scales)
 
     def segment(image, threshold, tta):
         if image is None:

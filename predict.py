@@ -20,10 +20,12 @@ def main():
     ap.add_argument("--output", default="predictions")
     ap.add_argument("--threshold", type=float, default=0.5)
     ap.add_argument("--tta", action="store_true")
+    ap.add_argument("--scales", type=float, nargs="+", default=[1.0])
+    ap.add_argument("--min-component-rel", type=float, default=0.0)
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
 
-    predictor = Predictor(args.checkpoint, args.device, args.tta)
+    predictor = Predictor(args.checkpoint, args.device, args.tta, args.scales, args.min_component_rel)
     src = Path(args.input)
     files = sorted(p for p in src.iterdir() if p.suffix.lower() in IMG_EXTS) if src.is_dir() else [src]
     out = Path(args.output)

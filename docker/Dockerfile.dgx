@@ -1,0 +1,12 @@
+# Image for the DGX Spark (aarch64 Grace + Blackwell GB10). NGC PyTorch already ships a
+# CUDA build of torch/torchvision for this GPU; only the pure-Python extras are added.
+# Pick a newer tag if this one is unavailable: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/pytorch
+ARG BASE=nvcr.io/nvidia/pytorch:25.09-py3
+FROM ${BASE}
+
+COPY docker/requirements-dgx.txt /tmp/requirements-dgx.txt
+# NGC pins its own packages through PIP_CONSTRAINT; the extras below do not touch torch.
+RUN pip install --no-cache-dir -r /tmp/requirements-dgx.txt \
+    && python -c "import timm, albumentations, cv2; print('timm', timm.__version__, 'albumentations', albumentations.__version__, 'cv2', cv2.__version__)"
+
+WORKDIR /workspace/PAS

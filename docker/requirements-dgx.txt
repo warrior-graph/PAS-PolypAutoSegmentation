@@ -1,0 +1,8 @@
+# Everything from requirements.txt except torch/torchvision (provided by the NGC image).
+timm>=1.0
+albumentations>=2.0
+opencv-python-headless
+pyyaml
+tqdm
+gdown
+pytest

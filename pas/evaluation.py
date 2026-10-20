@@ -8,16 +8,23 @@ from torch.utils.data import DataLoader
 from torch.utils.flop_counter import FlopCounterMode
 
 from .data import PolypDataset, find_pairs
-from .inference import predict_logits, to_probability
+from .inference import filter_components, predict_logits, scale_sizes, to_probability
 from .metrics import METRIC_NAMES, MetricTracker
 
 
 @torch.no_grad()
-def evaluate_pairs(model, pairs, size, device, dtype=None, tta=False, fast=False, num_workers=2, save_dir=None):
-    """Evaluate on (image, mask) pairs at the original mask resolution."""
+def evaluate_pairs(
+    model, pairs, size, device, dtype=None, tta=False, fast=False, num_workers=2, save_dir=None,
+    scales=(1.0,), min_component_rel=0.0,
+):
+    """Evaluate on (image, mask) pairs at the original mask resolution.
+
+    `scales` (multiples of `size`) enable multi-scale TTA; images are loaded at the largest.
+    """
     model.eval()
+    sizes = scale_sizes(size, scales)
     loader = DataLoader(
-        PolypDataset(pairs, size=size, keep_original=True), batch_size=1, num_workers=num_workers
+        PolypDataset(pairs, size=max(sizes), keep_original=True), batch_size=1, num_workers=num_workers
     )
     tracker = MetricTracker(fast=fast)
     if save_dir:
@@ -26,15 +33,15 @@ def evaluate_pairs(model, pairs, size, device, dtype=None, tta=False, fast=False
         x = batch["image"].to(device, non_blocking=True)
         gt = batch["mask_orig"][0].numpy()
         with torch.autocast(device.type, dtype=dtype, enabled=dtype is not None):
-            logits = predict_logits(model, x, tta)
-        prob = to_probability(logits, gt.shape)
+            logits = predict_logits(model, x, tta, sizes)
+        prob = filter_components(to_probability(logits, gt.shape), min_rel=min_component_rel)
         tracker.update(prob, gt)
         if save_dir:
             cv2.imwrite(str(Path(save_dir) / batch["name"][0]), (prob * 255).astype(np.uint8))
     return tracker.compute()
 
 
-def evaluate_test_sets(model, cfg, device, dtype=None, tta=False, save_dir=None):
+def evaluate_test_sets(model, cfg, device, dtype=None, tta=False, save_dir=None, scales=(1.0,), min_component_rel=0.0):
     """Evaluate every test set listed in the config; returns {name: metrics}."""
     root = Path(cfg["data"]["root"]) / cfg["data"]["test_dir"]
     results = {}
@@ -52,6 +59,8 @@ def evaluate_test_sets(model, cfg, device, dtype=None, tta=False, save_dir=None)
             tta,
             num_workers=cfg["data"].get("num_workers", 2),
             save_dir=Path(save_dir) / name if save_dir else None,
+            scales=scales,
+            min_component_rel=min_component_rel,
         )
         print(f"[eval] {name}: " + " ".join(f"{k}={v:.4f}" for k, v in results[name].items()))
     return results

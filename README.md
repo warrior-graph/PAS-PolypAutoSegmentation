@@ -78,6 +78,72 @@ Com cerca de 6× menos parâmetros, o B0 empata com o Polyp-PVT nos datasets vis
 
 Ressalvas: é uma única seed, e muitos artigos escolhem o checkpoint diretamente no conjunto de teste, o que não fazemos aqui.
 
+### Diagnóstico do B0: onde ele erra
+
+A análise foi feita imagem por imagem, sem TTA.
+
+- **Poucas imagens concentram o erro.** As imagens com Dice abaixo de 0,5 respondem por **59% do erro no ColonDB** (67 de 380) e por **56% no ETIS** (33 de 196).
+- **ColonDB:** o problema está nos extremos de tamanho.
+  - Pólipos com menos de 1% da imagem ficam com Dice de 0,53.
+  - Pólipos com mais de 10% da imagem ficam com 0,55; 16 deles passam totalmente despercebidos (lesões planas, de baixo contraste).
+  - Os de tamanho intermediário ficam em torno de 0,85.
+- **ETIS:** o problema é falso positivo.
+  - Nas imagens ruins, a área marcada por engano é 7,9× a do gabarito, e o falso positivo domina em 30 de 33 casos.
+  - O modelo gera mais de uma mancha em 70 imagens, embora 190 das 196 tenham um pólipo só.
+- **Truques só na predição rendem pouco.** O ETIS ganha +3,9 com multiescala + flip; o ColonDB, quase nada. O filtro de componentes dá cerca de +0,5, e o limiar não muda nada.
+
+Conclusão: o ganho real tem de vir do treino, e é isso que a rodada 2 ataca:
+- aumentações de escala e aparência (`data.aug=strong`, com reflexos especulares sintéticos);
+- resolução de entrada maior;
+- encoder B2.
+
+## Rodar a rodada 2 na DGX Spark (laboratório)
+
+A matriz está em [`experiments/round2.yaml`](experiments/round2.yaml) e é executada por [`scripts/run_experiments.py`](scripts/run_experiments.py). Cada experimento treina e depois avalia em quatro leituras:
+- `clean`: protocolo limpo, sem TTA;
+- `tta`: com flip;
+- `tta_ms`: flip + escalas 1,0/1,25/1,5;
+- `tta_ms_cc`: o anterior + filtro de componentes.
+
+No fim, tudo vira uma tabela em `runs/round2/summary.md`. Se a execução for interrompida, é só rodar de novo: o executor pula o que já terminou.
+
+| ID | Receita | Estimativa na Spark |
+|---|---|---|
+| `e0_b0_basic` | baseline refeito na mesma máquina | 20–35 min |
+| `e1_b0_strong` | + aumentações fortes | 25–40 min |
+| `e2_b0_448` | entrada de 448 px | 30–50 min |
+| `e3_b0_strong_448` | fortes + 448 px + 150 épocas | 50–80 min |
+| `e4_b2_basic` | encoder B2 | 1–1,5 h |
+| `e5_b2_strong_448` | B2 + fortes + 448 px + 150 épocas | 2,5–3,5 h |
+
+As estimativas ainda não foram medidas na Spark; o passo 3 abaixo mede. A matriz inteira deve levar de 6 a 9 h, então dá para deixar rodando de um dia para o outro.
+
+**Passo a passo (container NGC, recomendado):**
+```bash
+git clone -b claude/gifted-albattani-ikhwce https://github.com/warrior-graph/PAS-PolypAutoSegmentation.git
+cd PAS-PolypAutoSegmentation
+scripts/dgx/run.sh check     # 1. constrói a imagem; mostra GPU, versão do torch e dtype (deve ser bf16); roda os testes
+scripts/dgx/run.sh bench     # 2. baixa os dados (~700 MB) e cronometra 3 épocas do B0 (~3 min)
+nohup scripts/dgx/run.sh matrix > dgx_round2.log 2>&1 &   # 3. matriz completa, sobrevive ao fim da sessão SSH
+tail -f dgx_round2.log
+```
+
+- **Rodar só parte da matriz:** `scripts/dgx/run.sh matrix --only e1_b0_strong e2_b0_448`.
+- **Dois experimentos ao mesmo tempo na mesma GPU:** acrescente `--jobs 2`. Os 128 GB comportam; compare com o `bench` para ver se compensa.
+- **Dados já baixados em outro lugar:** `DATA_DIR=/caminho/com/TrainDataset_e_TestDataset scripts/dgx/run.sh matrix`.
+- **Outra versão do container:** se a tag `nvcr.io/nvidia/pytorch:25.09-py3` não existir, use `BASE=nvcr.io/nvidia/pytorch:<tag> REBUILD=1 scripts/dgx/run.sh check`.
+- **Ver o resultado:** `cat runs/round2/summary.md`. Para trazer para cá, copie `runs/round2/*/{log.csv,*.json,*.md}` (sem os `.pth`).
+
+**Sem Docker:** use `scripts/dgx/setup_venv.sh`. Ele cria um venv com o PyTorch CUDA para aarch64 (`TORCH_INDEX=cu130` por padrão). Depois:
+```bash
+source .venv-dgx/bin/activate
+python scripts/download_data.py
+python scripts/run_experiments.py experiments/round2.yaml --bench
+python scripts/run_experiments.py experiments/round2.yaml
+```
+
+O mesmo executor funciona numa GPU de 4 a 8 GB. Nesse caso, sobrescreva o batch editando o `defaults.set` do YAML para `train.batch_size=8, train.grad_accum=2, data.num_workers=4`.
+
 ## Estado da arte (outubro de 2026), em resumo
 
 - **Datasets vistos no treino estão saturados.** O Dice fica entre 0,92 e 0,94 no Kvasir e no ClinicDB. Exemplos: Polyp-PVT, CASCADE, EMCAD, MEGANet, SCABNet.
@@ -119,9 +185,12 @@ pas/
   losses.py         # BCE + IoU ponderadas (PraNet) e supervisão profunda MUTATION (EMCAD)
   metrics.py        # Dice, IoU, Sα, Eφ (vetorizada) e MAE
   evaluation.py     # avaliação por conjunto, tabela, parâmetros/FLOPs/FPS
-  inference.py      # Predictor (checkpoint -> mapa de probabilidade) e overlay
+  inference.py      # Predictor, TTA flip/multiescala, filtro de componentes e overlay
 train.py  eval.py  predict.py  app.py
-configs/  scripts/download_data.py  notebooks/kaggle_train.ipynb  tests/
+configs/  experiments/round2.yaml          # configs base e matriz de experimentos
+scripts/run_experiments.py                 # executor da matriz (treino + avaliações + resumo)
+scripts/dgx/{run.sh,setup_venv.sh}  docker/Dockerfile.dgx   # DGX Spark
+scripts/download_data.py  notebooks/kaggle_train.ipynb  tests/
 ```
 
 ## Referências

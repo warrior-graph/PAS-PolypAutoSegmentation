@@ -1,0 +1,36 @@
+# Round 2: attack the failures on unseen centres found in the B0 diagnosis
+# (ColonDB misses tiny and large flat polyps, ETIS is dominated by false positives).
+#
+#   python scripts/run_experiments.py experiments/round2.yaml [--only ...] [--jobs 2]
+#
+# Expected wall time on a DGX Spark is a guess until --bench is run there:
+# B0 ~20-35 min, B2 ~1-1.5 h at 352 px (more at 448 px).
+
+defaults:
+  config: configs/emcad_b0.yaml
+  # Big-memory GPU (DGX Spark / >=16 GB): full batch, no accumulation, more loader workers.
+  # On a 4-8 GB GPU drop batch_size to 8 and set train.grad_accum=2.
+  set: [train.batch_size=16, train.grad_accum=1, data.num_workers=12]
+  evals:
+    tta: [--tta]
+    tta_ms: [--tta, --scales, 1.0, 1.25, 1.5]
+    tta_ms_cc: [--tta, --scales, 1.0, 1.25, 1.5, --min-component-rel, 0.3]
+
+experiments:
+  # Baseline recipe re-run on this machine, so every comparison uses the same hardware/precision.
+  e0_b0_basic: {}
+  # Scale + appearance augmentations and synthetic specular highlights.
+  e1_b0_strong:
+    set: [data.aug=strong]
+  # Higher input resolution for small polyps.
+  e2_b0_448:
+    set: [data.image_size=448]
+  # Both, trained longer (stronger augmentation converges slower).
+  e3_b0_strong_448:
+    set: [data.aug=strong, data.image_size=448, train.epochs=150]
+  # Stronger encoder (PVTv2-b2, 26.8M params), baseline and full recipe.
+  e4_b2_basic:
+    config: configs/emcad_b2.yaml
+  e5_b2_strong_448:
+    config: configs/emcad_b2.yaml
+    set: [data.aug=strong, data.image_size=448, train.epochs=150]

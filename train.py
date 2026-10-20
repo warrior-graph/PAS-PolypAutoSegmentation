@@ -75,7 +75,7 @@ def main():
     size = dcfg["image_size"]
     nw = dcfg.get("num_workers", 4)
     loader = DataLoader(
-        PolypDataset(train_pairs, size=size, train=True),
+        PolypDataset(train_pairs, size=size, train=True, aug=dcfg.get("aug", "basic")),
         batch_size=tcfg["batch_size"],
         shuffle=True,
         num_workers=nw,

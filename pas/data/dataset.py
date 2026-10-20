@@ -97,6 +97,82 @@ def train_transforms(size: int) -> A.Compose:
     )
 
 
+class SpecularHighlights(A.ImageOnlyTransform):
+    """Paint small saturated white blobs, mimicking the light reflections that cause
+    false positives on unseen centres (ETIS). The mask is left untouched."""
+
+    def __init__(self, max_blobs=6, max_radius=0.04, p=0.3):
+        super().__init__(p=p)
+        self.max_blobs = max_blobs
+        self.max_radius = max_radius
+
+    def apply(self, img, **params):
+        h, w = img.shape[:2]
+        layer = np.zeros((h, w), np.float32)
+        for _ in range(random.randint(1, self.max_blobs)):
+            center = (random.randrange(w), random.randrange(h))
+            r = max(2, int(random.uniform(0.005, self.max_radius) * min(h, w)))
+            axes = (r, max(1, int(r * random.uniform(0.3, 1.0))))
+            cv2.ellipse(layer, center, axes, random.uniform(0, 180), 0, 360, 1.0, -1)
+        k = max(3, (int(0.01 * min(h, w)) | 1))
+        layer = cv2.GaussianBlur(layer, (k, k), 0)[..., None]
+        return (img * (1 - layer) + 255 * layer).astype(np.uint8)
+
+
+def strong_train_transforms(size: int) -> A.Compose:
+    """Scale and appearance augmentations aimed at unseen centres (ColonDB, ETIS):
+    zoom-in crops for small polyps, zoom-out for large ones, colour/illumination/
+    blur/compression shifts between endoscopes, and synthetic specular highlights."""
+    return A.Compose(
+        [
+            A.OneOf(
+                [
+                    A.RandomResizedCrop(size=(size, size), scale=(0.3, 1.0), ratio=(0.75, 1.33)),
+                    A.Resize(size, size),
+                ],
+                p=1.0,
+            ),
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.RandomRotate90(p=0.5),
+            A.OneOf(
+                [
+                    A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3),
+                    A.RandomGamma(gamma_limit=(70, 150)),
+                    A.CLAHE(clip_limit=3.0),
+                ],
+                p=0.7,
+            ),
+            A.OneOf(
+                [
+                    A.HueSaturationValue(hue_shift_limit=15, sat_shift_limit=30, val_shift_limit=20),
+                    A.RGBShift(r_shift_limit=20, g_shift_limit=15, b_shift_limit=15),
+                ],
+                p=0.6,
+            ),
+            # geometric warp after the colour ops so padded borders stay black like real frames
+            A.Affine(
+                scale=(0.5, 1.5),
+                translate_percent=(-0.15, 0.15),
+                rotate=(-30, 30),
+                border_mode=cv2.BORDER_CONSTANT,
+                fill=0,
+                fill_mask=0,
+                p=0.5,
+            ),
+            A.OneOf([A.GaussianBlur(blur_limit=(3, 7)), A.MotionBlur(blur_limit=(3, 9))], p=0.3),
+            A.GaussNoise(std_range=(0.02, 0.06), p=0.2),
+            A.ImageCompression(quality_range=(40, 95), p=0.3),
+            SpecularHighlights(p=0.3),
+            A.Normalize(MEAN, STD),
+            ToTensorV2(),
+        ]
+    )
+
+
+TRAIN_AUGS = {"basic": train_transforms, "strong": strong_train_transforms}
+
+
 def eval_transforms(size: int) -> A.Compose:
     return A.Compose([A.Resize(size, size), A.Normalize(MEAN, STD), ToTensorV2()])
 
@@ -107,9 +183,9 @@ class PolypDataset(Dataset):
     With `keep_original=True` the original-resolution mask is also returned (for evaluation).
     """
 
-    def __init__(self, pairs, size=352, train=False, keep_original=False):
+    def __init__(self, pairs, size=352, train=False, keep_original=False, aug="basic"):
         self.pairs = list(pairs)
-        self.tf = train_transforms(size) if train else eval_transforms(size)
+        self.tf = TRAIN_AUGS[aug](size) if train else eval_transforms(size)
         self.keep_original = keep_original
 
     def __len__(self):

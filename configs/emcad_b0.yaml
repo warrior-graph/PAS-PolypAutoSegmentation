@@ -12,6 +12,7 @@ data:
   image_size: 352
   val_fraction: 0.1            # held out from TrainDataset for checkpoint selection
   num_workers: 4
+  aug: basic                   # basic | strong (scale + appearance, for unseen centres)
 
 model:
   name: emcad
