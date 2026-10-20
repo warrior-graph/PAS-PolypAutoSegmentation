@@ -66,6 +66,14 @@ Qualquer chave do YAML pode ser sobrescrita com `--set secao.chave=valor`.
 | ETIS *(não visto)* | 0.758 | **0.781** | 0.701 | 0.865 | 0.020 |
 | CVC-300 *(não visto)* | 0.883 | **0.892** | 0.816 | 0.933 | 0.009 |
 
+Com flip + multiescala (`eval.py --tta --scales 1.0 1.25 1.5`), o mDice fica assim:
+
+| Kvasir | ClinicDB | ColonDB | ETIS | CVC-300 |
+|---|---|---|---|---|
+| 0.917 | 0.939 | 0.759 | **0.803** | 0.899 |
+
+Somando o filtro de componentes (`--min-component-rel 0.3`), o ETIS sobe para 0.810.
+
 Para referência, os números publicados no mesmo protocolo (mDice) são estes:
 
 | Modelo | Params | Kvasir | ClinicDB | ColonDB | ETIS | CVC-300 |
