@@ -10,6 +10,8 @@ O notebook [`notebooks/kaggle_train.ipynb`](../notebooks/kaggle_train.ipynb) faz
 
 **Tempo medido numa T4:** o B0 com 100 épocas levou ~45 min de treino e ~5 min de avaliação.
 
+Para o **detector YOLO11** (só caixas), use [`notebooks/kaggle_yolo.ipynb`](../notebooks/kaggle_yolo.ipynb) do mesmo jeito, pela interface ou pela API. Ele treina o YOLO11n e o 11s (~22 e ~28 min numa T4), avalia com `scripts/eval_boxes.py` e gera o `yolo_run.zip`. Os resultados estão em [`results/boxes/`](../results/boxes/README.md).
+
 ## Antes de começar
 
 - **Telefone verificado:** vá em *Settings → Phone verification*. Sem isso, o Kaggle não libera GPU nem Internet.

@@ -80,12 +80,13 @@ def main():
             img_path, mask_path = pairs[img_name]
             image = read_image(img_path)
             t = max(2, image.shape[0] // 150)
-            draw_boxes(image, mask_to_boxes(read_mask(mask_path)), GT_COLOR, thickness=t + 2)
+            # thicker lines first, so boxes that coincide stay visible underneath each other
+            draw_boxes(image, mask_to_boxes(read_mask(mask_path)), GT_COLOR, thickness=t * (len(models) + 2))
             for i, (lab, preds, thr) in enumerate(models):
                 p = preds[name].get(img_name, {"boxes": [], "scores": []})
                 keep = [k for k, s in enumerate(p["scores"]) if s >= thr]
                 draw_boxes(image, np.array([p["boxes"][k] for k in keep]).reshape(-1, 4), COLORS[i % len(COLORS)],
-                           scores=[p["scores"][k] for k in keep], thickness=t)
+                           scores=[p["scores"][k] for k in keep], thickness=t * (len(models) - i))
             tiles.append(tile(image))
         row = np.hstack(tiles)
         fig = np.vstack([legend(row.shape[1], models), row])

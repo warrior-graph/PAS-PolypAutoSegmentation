@@ -102,6 +102,23 @@ Conclusão: o ganho real tem de vir do treino, e é isso que a rodada 2 ataca:
 - resolução de entrada maior;
 - encoder B2.
 
+## Detecção: só caixas, sem segmentar
+
+Também comparamos marcar os pólipos **só com caixas**, como fazem os sistemas de CADe na clínica. Os detalhes estão em [results/boxes/README.md](results/boxes/README.md), com figuras.
+
+AP50 nos centros não vistos (ColonDB / ETIS / CVC-300):
+
+| Modelo | ColonDB | ETIS | CVC-300 | média |
+|---|---|---|---|---|
+| Caixas da segmentação EMCAD-B0 + TTA | 0.725 | **0.737** | **0.978** | 0.813 |
+| **YOLO11n** (2,6M parâmetros, 22 min na T4) | **0.834** | 0.709 | 0.949 | **0.831** |
+
+- O YOLO11n erra bem menos: cerca de 0,05 falso positivo por imagem, contra 0,3 da segmentação.
+- A segmentação dá caixas mais justas no ETIS e no CVC-300.
+- O próximo passo natural é treinar o detector com as bases que só têm caixas (SUN, LDPolypVideo, KUMC, PolypGen), bem maiores que as 1305 imagens atuais.
+
+![ColonDB: gabarito (branco), segmentação (verde), YOLO11n (magenta)](results/boxes/figures/CVC-ColonDB.jpg)
+
 ## Rodada 2 (em andamento)
 
 A matriz [`experiments/round2.yaml`](experiments/round2.yaml) ataca o diagnóstico acima com seis experimentos:
@@ -158,6 +175,7 @@ pas/
 train.py  eval.py  predict.py  app.py
 configs/  experiments/round2.yaml          # configs base e matriz de experimentos
 scripts/run_experiments.py                 # executor da matriz (treino + avaliações + resumo)
+pas/detection.py  scripts/{eval_boxes,make_yolo_dataset,render_boxes}.py  notebooks/kaggle_yolo.ipynb  # caixas
 scripts/dgx/{run.sh,setup_venv.sh}  docker/Dockerfile.dgx   # DGX Spark
 scripts/download_data.py  notebooks/kaggle_train.ipynb  tests/
 docs/rodar_{local,kaggle,dgx}.md           # guias de execução
