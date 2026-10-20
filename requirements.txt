@@ -1,0 +1,11 @@
+torch>=2.1
+torchvision
+timm>=1.0
+albumentations>=2.0
+opencv-python-headless
+numpy
+pyyaml
+tqdm
+gdown
+pytest
+# optional demo: gradio

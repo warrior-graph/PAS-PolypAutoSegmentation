@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+runs/
+predictions/
+*.pth
+*.zip
+.ipynb_checkpoints/
+.venv/
+venv/

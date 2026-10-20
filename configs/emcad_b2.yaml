@@ -1,0 +1,34 @@
+# PVTv2-b2 + EMCAD (~26.8M params, ~10.5 GFLOPs at 352x352). 8 GB GPU or Kaggle T4.
+experiment: emcad_b2
+seed: 42
+device: auto
+output_dir: runs
+
+data:
+  root: data
+  train_dir: TrainDataset      # Kvasir-SEG (900) + CVC-ClinicDB (550), PraNet split
+  test_dir: TestDataset
+  test_sets: [Kvasir, CVC-ClinicDB, CVC-ColonDB, ETIS-LaribPolypDB, CVC-300]
+  image_size: 352
+  val_fraction: 0.1            # held out from TrainDataset for checkpoint selection
+  num_workers: 4
+
+model:
+  name: emcad
+  encoder: pvt_v2_b2
+  pretrained: true             # ImageNet weights from timm / Hugging Face
+  kernel_sizes: [1, 3, 5]
+  expansion: 2
+
+train:
+  epochs: 100
+  batch_size: 8
+  grad_accum: 2                # effective batch 16
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  warmup_epochs: 2
+  grad_clip: 0.5
+  multi_scale: [0.75, 1.0, 1.25]
+  deep_supervision: mutation   # mutation | sum | last
+  amp: true
+  val_every: 1
