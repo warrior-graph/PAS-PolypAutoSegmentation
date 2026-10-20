@@ -6,6 +6,7 @@
     python scripts/run_experiments.py experiments/round2.yaml --dry-run
     python scripts/run_experiments.py experiments/round2.yaml --bench         # time a short B0 run
     python scripts/run_experiments.py experiments/round2.yaml --summary-only
+    python scripts/run_experiments.py experiments/round2.yaml --set train.batch_size=8 train.grad_accum=2
 
 Finished steps are skipped (a run with test_results.json is not retrained, an existing
 eval_<variant>.json is not recomputed), so an interrupted matrix can simply be relaunched.
@@ -154,9 +155,12 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--bench", action="store_true", help="only time a short B0 run")
     ap.add_argument("--summary-only", action="store_true")
+    ap.add_argument("--set", nargs="*", default=[], help="overrides appended to every experiment (win over the YAML)")
     args = ap.parse_args()
 
     matrix = load_matrix(args.matrix)
+    for exp in matrix.values():
+        exp["set"] += args.set
     names = [n for n in matrix if not args.only or n in args.only]
     unknown = set(args.only or []) - set(matrix)
     if unknown:
@@ -165,7 +169,7 @@ def main():
 
     if args.bench:
         defaults = yaml.safe_load(open(args.matrix)).get("defaults", {}).get("set", [])
-        return bench(args.out, args.data_root, defaults)
+        return bench(args.out, args.data_root, defaults + args.set)
     if args.dry_run:
         for n in names:
             print(" ".join(map(str, train_cmd(n, matrix[n], args.out, args.data_root))))

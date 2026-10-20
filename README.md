@@ -6,31 +6,28 @@ O ponto de partida é um baseline leve e reprodutível: o encoder PVTv2 com o de
 
 > Protótipo de pesquisa. **Não é um dispositivo médico.**
 
-## Início rápido
+## Como rodar
+
+Há um guia para cada ambiente:
+
+| Onde | Guia | Para quê |
+|---|---|---|
+| GPU local (4–8 GB) ou CPU | [docs/rodar_local.md](docs/rodar_local.md) | desenvolvimento, treinos B0, inferência e demo |
+| Kaggle (T4 grátis) | [docs/rodar_kaggle.md](docs/rodar_kaggle.md) | treinos completos sem hardware próprio, pela interface web ou pela API |
+| DGX Spark (laboratório) | [docs/rodar_dgx.md](docs/rodar_dgx.md) | matriz de experimentos inteira, B2 e alta resolução |
+
+Resumo, em qualquer lugar com PyTorch instalado:
 
 ```bash
 pip install -r requirements.txt
 python scripts/download_data.py                       # ~700 MB -> data/TrainDataset, data/TestDataset
 python train.py --config configs/emcad_b0.yaml        # treina e avalia nos 5 conjuntos de teste
-python eval.py --checkpoint runs/emcad_b0/best.pth --tta
+python eval.py --checkpoint runs/emcad_b0/best.pth --tta --scales 1.0 1.25 1.5
 python predict.py --checkpoint runs/emcad_b0/best.pth --input minha_imagem.png --output preds/
-pip install gradio && python app.py --checkpoint runs/emcad_b0/best.pth
+python scripts/run_experiments.py experiments/round2.yaml --only e1_b0_strong   # um experimento da matriz
 ```
 
-- **Kaggle:** use [`notebooks/kaggle_train.ipynb`](notebooks/kaggle_train.ipynb), com GPU T4 e Internet ativada.
-- **Teste rápido:** `python train.py --config configs/emcad_b0.yaml --max-steps 20`.
-- **Testes:** `pytest tests/`.
-
-### Qual configuração usar em cada hardware
-
-| Hardware | Config | Ajuste sugerido |
-|---|---|---|
-| GPU 4 GB | `emcad_b0.yaml` | padrão: `batch_size=8`, `grad_accum=2` |
-| GPU 8 GB | `emcad_b0.yaml` / `emcad_b2.yaml` | B0 com `--set train.batch_size=16 train.grad_accum=1`; B2 no padrão |
-| Kaggle T4 (16 GB) | qualquer | `--set train.batch_size=16 train.grad_accum=1` |
-| DGX Spark | `emcad_b2.yaml` | batch maior; o modo bf16 é usado automaticamente |
-
-Qualquer chave do YAML pode ser sobrescrita com `--set secao.chave=valor`.
+Qualquer chave do YAML pode ser sobrescrita com `--set secao.chave=valor`. Os testes rodam com `pytest tests/`.
 
 ## Protocolo de avaliação
 
@@ -105,52 +102,16 @@ Conclusão: o ganho real tem de vir do treino, e é isso que a rodada 2 ataca:
 - resolução de entrada maior;
 - encoder B2.
 
-## Rodar a rodada 2 na DGX Spark (laboratório)
+## Rodada 2 (em andamento)
 
-A matriz está em [`experiments/round2.yaml`](experiments/round2.yaml) e é executada por [`scripts/run_experiments.py`](scripts/run_experiments.py). Cada experimento treina e depois avalia em quatro leituras:
-- `clean`: protocolo limpo, sem TTA;
-- `tta`: com flip;
-- `tta_ms`: flip + escalas 1,0/1,25/1,5;
-- `tta_ms_cc`: o anterior + filtro de componentes.
+A matriz [`experiments/round2.yaml`](experiments/round2.yaml) ataca o diagnóstico acima com seis experimentos:
+- `e0`: o baseline refeito;
+- `e1`: aumentações fortes;
+- `e2`: entrada de 448 px;
+- `e3`: aumentações fortes + 448 px;
+- `e4`/`e5`: o mesmo com o encoder B2.
 
-No fim, tudo vira uma tabela em `runs/round2/summary.md`. Se a execução for interrompida, é só rodar de novo: o executor pula o que já terminou.
-
-| ID | Receita | Estimativa na Spark |
-|---|---|---|
-| `e0_b0_basic` | baseline refeito na mesma máquina | 20–35 min |
-| `e1_b0_strong` | + aumentações fortes | 25–40 min |
-| `e2_b0_448` | entrada de 448 px | 30–50 min |
-| `e3_b0_strong_448` | fortes + 448 px + 150 épocas | 50–80 min |
-| `e4_b2_basic` | encoder B2 | 1–1,5 h |
-| `e5_b2_strong_448` | B2 + fortes + 448 px + 150 épocas | 2,5–3,5 h |
-
-As estimativas ainda não foram medidas na Spark; o passo 3 abaixo mede. A matriz inteira deve levar de 6 a 9 h, então dá para deixar rodando de um dia para o outro.
-
-**Passo a passo (container NGC, recomendado):**
-```bash
-git clone -b claude/gifted-albattani-ikhwce https://github.com/warrior-graph/PAS-PolypAutoSegmentation.git
-cd PAS-PolypAutoSegmentation
-scripts/dgx/run.sh check     # 1. constrói a imagem; mostra GPU, versão do torch e dtype (deve ser bf16); roda os testes
-scripts/dgx/run.sh bench     # 2. baixa os dados (~700 MB) e cronometra 3 épocas do B0 (~3 min)
-nohup scripts/dgx/run.sh matrix > dgx_round2.log 2>&1 &   # 3. matriz completa, sobrevive ao fim da sessão SSH
-tail -f dgx_round2.log
-```
-
-- **Rodar só parte da matriz:** `scripts/dgx/run.sh matrix --only e1_b0_strong e2_b0_448`.
-- **Dois experimentos ao mesmo tempo na mesma GPU:** acrescente `--jobs 2`. Os 128 GB comportam; compare com o `bench` para ver se compensa.
-- **Dados já baixados em outro lugar:** `DATA_DIR=/caminho/com/TrainDataset_e_TestDataset scripts/dgx/run.sh matrix`.
-- **Outra versão do container:** se a tag `nvcr.io/nvidia/pytorch:25.09-py3` não existir, use `BASE=nvcr.io/nvidia/pytorch:<tag> REBUILD=1 scripts/dgx/run.sh check`.
-- **Ver o resultado:** `cat runs/round2/summary.md`. Para trazer para cá, copie `runs/round2/*/{log.csv,*.json,*.md}` (sem os `.pth`).
-
-**Sem Docker:** use `scripts/dgx/setup_venv.sh`. Ele cria um venv com o PyTorch CUDA para aarch64 (`TORCH_INDEX=cu130` por padrão). Depois:
-```bash
-source .venv-dgx/bin/activate
-python scripts/download_data.py
-python scripts/run_experiments.py experiments/round2.yaml --bench
-python scripts/run_experiments.py experiments/round2.yaml
-```
-
-O mesmo executor funciona numa GPU de 4 a 8 GB. Nesse caso, sobrescreva o batch editando o `defaults.set` do YAML para `train.batch_size=8, train.grad_accum=2, data.num_workers=4`.
+Cada experimento é avaliado sem TTA, com flip, com flip + multiescala e com o filtro de componentes. O executor é [`scripts/run_experiments.py`](scripts/run_experiments.py). Como rodar: [DGX](docs/rodar_dgx.md), [Kaggle](docs/rodar_kaggle.md#receitas-da-rodada-2-no-kaggle) ou [local](docs/rodar_local.md#5-matriz-de-experimentos-rodada-2).
 
 ## Estado da arte (outubro de 2026), em resumo
 
@@ -199,6 +160,7 @@ configs/  experiments/round2.yaml          # configs base e matriz de experiment
 scripts/run_experiments.py                 # executor da matriz (treino + avaliações + resumo)
 scripts/dgx/{run.sh,setup_venv.sh}  docker/Dockerfile.dgx   # DGX Spark
 scripts/download_data.py  notebooks/kaggle_train.ipynb  tests/
+docs/rodar_{local,kaggle,dgx}.md           # guias de execução
 ```
 
 ## Referências

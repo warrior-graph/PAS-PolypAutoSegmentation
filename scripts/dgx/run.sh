@@ -23,7 +23,7 @@ if [[ "${REBUILD:-0}" == 1 ]] || ! docker image inspect "$IMAGE" >/dev/null 2>&1
   docker build -t "$IMAGE" ${BASE:+--build-arg BASE="$BASE"} -f "$REPO/docker/Dockerfile.dgx" "$REPO"
 fi
 
-mkdir -p "$REPO/.cache"
+mkdir -p "$REPO/.cache/home"
 DOCKER_ARGS=(
   --rm --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864
   --user "$(id -u):$(id -g)"
