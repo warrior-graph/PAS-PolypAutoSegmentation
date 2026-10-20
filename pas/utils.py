@@ -35,10 +35,15 @@ def get_device(name: str = "auto") -> torch.device:
 
 
 def amp_dtype(device: torch.device) -> torch.dtype | None:
-    """bf16 where supported (Ampere+, DGX Spark), fp16 on older GPUs (T4/P100), none on CPU."""
+    """bf16 on Ampere+ (RTX 30/40, DGX Spark), fp16 on older GPUs (T4/P100), none on CPU.
+
+    is_bf16_supported() also returns True on pre-Ampere GPUs (emulated), but cuDNN has no
+    bf16 kernels there (e.g. T4 fails with "unable to find an engine"), so check the arch.
+    """
     if device.type != "cuda":
         return None
-    return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    major, _ = torch.cuda.get_device_capability(device)
+    return torch.bfloat16 if major >= 8 and torch.cuda.is_bf16_supported() else torch.float16
 
 
 def save_checkpoint(path, model, cfg, **extra):
