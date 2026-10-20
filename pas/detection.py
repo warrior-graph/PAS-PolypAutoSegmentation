@@ -157,12 +157,14 @@ def det_table(results: dict) -> str:
     return "\n".join(lines)
 
 
-def draw_boxes(image, boxes, color, scores=None, label="", thickness=3):
+def draw_boxes(image, boxes, color, scores=None, label="", thickness=3, font_scale=None):
     """Draw boxes (and optional scores) on an RGB uint8 image in place; returns it."""
+    font_scale = font_scale or max(0.6, image.shape[0] / 600)
     for k, b in enumerate(np.asarray(boxes).reshape(-1, 4)):
         x1, y1, x2, y2 = map(int, b)
         cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness)
         text = label + (f" {scores[k]:.2f}" if scores is not None else "")
         if text.strip():
-            cv2.putText(image, text.strip(), (x1, max(15, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+            org = (x1, max(int(25 * font_scale), y1 - 8))
+            cv2.putText(image, text.strip(), org, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, max(2, thickness - 1), cv2.LINE_AA)
     return image
